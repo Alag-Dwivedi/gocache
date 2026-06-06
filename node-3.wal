@@ -1,0 +1,2 @@
+{"Term":59,"Command":"SET mykey myvalue","ExpiresAt":0}
+{"Term":65,"Command":"SET trace_key tracing","ExpiresAt":0}

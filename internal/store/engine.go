@@ -105,3 +105,30 @@ func (e *Engine) evictExpiredKeys() {
 		println("[Janitor] Purged", evictedCount, "expired keys from memory.")
 	}
 }
+
+// ExportState creates a point-in-time deep copy of the current database.
+func (e *Engine) ExportState() map[string]Item {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	state := make(map[string]Item)
+	for k, v := range e.cache {
+		// Only export keys that haven't expired yet
+		if e.IsDurable(v) || time.Now().Before(v.ExpiresAt) {
+			state[k] = v
+		}
+	}
+	return state
+}
+
+// ImportState forcefully overwrites the current database with a loaded snapshot.
+func (e *Engine) ImportState(state map[string]Item) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.cache = state
+}
+
+// Helper to check durability since we accessed it above
+func (e *Engine) IsDurable(item Item) bool {
+	return item.IsDurable
+}

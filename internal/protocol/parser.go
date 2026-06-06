@@ -3,72 +3,63 @@ package protocol
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
 )
 
-// ParseRESPCommand reads a raw incoming RESP payload stream and extracts the string array arguments.
+// ParseRESPCommand reads exactly one command off the wire safely.
 func ParseRESPCommand(reader *bufio.Reader) ([]string, error) {
-	// 1. Read the array indicator prefix byte (e.g. '*')
-	prefix, err := reader.ReadByte()
+	// 1. Read the first line to determine the type of request
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err // Connection closed or network error
+	}
+	line = strings.TrimSpace(line)
+
+	if line == "" {
+		return nil, errors.New("empty command")
+	}
+
+	// 2. If it doesn't start with '*', it's a raw text command (e.g. from telnet)
+	if !strings.HasPrefix(line, "*") {
+		return strings.Fields(line), nil
+	}
+
+	// 3. Parse the number of arguments in the RESP Array (e.g., "*3" means 3 args)
+	numArgs, err := strconv.Atoi(line[1:])
 	if err != nil {
 		return nil, err
 	}
 
-	if prefix != '*' {
-		// Treat line as a inline plain text fallback command if it doesn't start with '*'
-		line, err := reader.ReadString('\n')
+	var args []string
+	for i := 0; i < numArgs; i++ {
+		// Read the string length header (e.g., "$3")
+		lenLine, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, err
 		}
-		return strings.Fields(strings.TrimSpace(string(prefix) + line)), nil
-	}
+		lenLine = strings.TrimSpace(lenLine)
 
-	// 2. Read how many elements are inside the array
-	countStr, err := reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	count, err := strconv.Atoi(strings.TrimSpace(countStr))
-	if err != nil || count <= 0 {
-		return nil, errors.New("invalid array length descriptor")
-	}
+		if !strings.HasPrefix(lenLine, "$") {
+			return nil, errors.New("expected bulk string indicator '$'")
+		}
 
-	args := make([]string, count)
-
-	// 3. Loop and parse each Bulk String entry sequentially
-	for i := range count {
-		dollar, err := reader.ReadByte()
+		strLen, err := strconv.Atoi(lenLine[1:])
 		if err != nil {
 			return nil, err
 		}
-		if dollar != '$' {
-			return nil, fmt.Errorf("expected bulk string indicator '$', got '%c'", dollar)
-		}
 
-		// Read bulk string length
-		lenStr, err := reader.ReadString('\n')
+		// Read the EXACT number of bytes for the string, plus 2 for the \r\n terminator.
+		// Using io.ReadFull prevents the server from hanging waiting for newlines in binary data.
+		buf := make([]byte, strLen+2)
+		_, err = io.ReadFull(reader, buf)
 		if err != nil {
 			return nil, err
 		}
-		strLen, err := strconv.Atoi(strings.TrimSpace(lenStr))
-		if err != nil {
-			return nil, errors.New("invalid bulk string size header")
-		}
 
-		// Read the actual body payload bytes
-		buf := make([]byte, strLen)
-		if _, err := io.ReadFull(reader, buf); err != nil {
-			return nil, err
-		}
-		args[i] = string(buf)
-
-		// Read and discard trailing \r\n padding bytes
-		if _, err := reader.ReadString('\n'); err != nil {
-			return nil, err
-		}
+		// Append the string (stripping off the trailing \r\n)
+		args = append(args, string(buf[:strLen]))
 	}
 
 	return args, nil

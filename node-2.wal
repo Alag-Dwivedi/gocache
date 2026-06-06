@@ -1,0 +1,7 @@
+{"Term":59,"Command":"SET mykey myvalue","ExpiresAt":0}
+{"Term":157,"Command":"SET testkey This_Is_AWESOME!","ExpiresAt":1780775472799408500}
+{"Term":157,"Command":"SET test_key IT_IS_AWESOME","ExpiresAt":1780775372808239400}
+{"Term":157,"Command":"SET proxy_test hello_distributed_world","ExpiresAt":0}
+{"Term":157,"Command":"SET proxy_test hello_distributed_world","ExpiresAt":0}
+{"Term":40,"Command":"SET proxy_test hello_distributed_world","ExpiresAt":0}
+{"Term":65,"Command":"SET trace_key tracing","ExpiresAt":0}
